@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Market Analysis Dashboard</title>
+  <!-- Load D3.js from a CDN -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    /* Basic styling for the dashboard and charts */
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 20px;
+    }
+    h1, h2 {
+      text-align: center;
+      color: #333;
+    }
+    .chart {
+      background: #fff;
+      margin: 40px auto;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 800px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    svg {
+      width: 100%;
+      height: 400px;
+    }
+    /* Tooltip styling */
+    #tooltip {
+      position: absolute;
+      background: #fff;
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      pointer-events: none;
+      opacity: 0;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Market Analysis Dashboard</h1>
+
+  <!-- Section for the Interactive Bar Chart (Market Share) -->
+  <section class="chart" id="marketshare-chart">
+    <h2>Market Share</h2>
+    <svg></svg>
+  </section>
+
+  <!-- Section for the Animated Line Chart (Revenue Trends) -->
+  <section class="chart" id="revenuetrends-chart">
+    <h2>Revenue Trends</h2>
+    <svg></svg>
+  </section>
+
+  <!-- Section for the Bubble Chart (Market Segmentation) -->
+  <section class="chart" id="marketsegment-chart">
+    <h2>Market Segmentation</h2>
+    <svg></svg>
+  </section>
+
+  <!-- Tooltip element for hover interactivity -->
+  <div id="tooltip"></div>
+
+  <script>
+    // Create a tooltip selection using D3
+    const tooltip = d3.select("#tooltip");
+
+    // Functions to show and hide tooltips
+    function showTooltip(content, event) {
+      tooltip
+        .html(content)
+        .style("left", (event.pageX + 10) + "px")
+        .style("top", (event.pageY + 10) + "px")
+        .style("opacity", 1);
+    }
+    function hideTooltip() {
+      tooltip.style("opacity", 0);
+    }
+
+    // ------------------------------------
+    // Bar Chart: Market Share
+    // ------------------------------------
+    function drawMarketShareChart() {
+      d3.json("/api/marketshare").then(data => {
+        // Set SVG dimensions and margins
+        const svg = d3.select("#marketshare-chart svg"),
+              margin = {top: 20, right: 20, bottom: 40, left: 60},
+              width = +svg.node().getBoundingClientRect().width - margin.left - margin.right,
+              height = +svg.node().getBoundingClientRect().height - margin.top - margin.bottom;
+
+        // Create a group element for chart content
+        const g = svg.append("g")
+                     .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // X scale: Company names
+        const x = d3.scaleBand()
+                    .domain(data.companies.map(d => d.name))
+                    .range([0, width])
+                    .padding(0.4);
+
+        // Y scale: Market share percentages
+        const y = d3.scaleLinear()
+                    .domain([0, d3.max(data.companies, d => d.marketShare)])
+                    .nice()
+                    .range([height, 0]);
+
+        // Draw x-axis and y-axis
+        g.append("g")
+         .attr("class", "x-axis")
+         .attr("transform", `translate(0,${height})`)
+         .call(d3.axisBottom(x));
+
+        g.append("g")
+         .attr("class", "y-axis")
+         .call(d3.axisLeft(y).ticks(5).tickFormat(d => d + "%"));
+
+        // Create bars with animated transitions
+        g.selectAll(".bar")
+         .data(data.companies)
+         .enter()
+         .append("rect")
+         .attr("class", "bar")
+         .attr("x", d => x(d.name))
+         .attr("y", height)
+         .attr("width", x.bandwidth())
+         .attr("height", 0)
+         .attr("fill", "#2E7D32")
+         .on("mouseover", function(event, d) {
+            showTooltip(`Company: ${d.name}<br>Market Share: ${d.marketShare}%`, event);
+         })
+         .on("mousemove", function(event) {
+            tooltip.style("left", (event.pageX + 10) + "px")
+                   .style("top", (event.pageY + 10) + "px");
+         })
+         .on("mouseout", hideTooltip)
+         .transition()
+         .duration(800)
+         .attr("y", d => y(d.marketShare))
+         .attr("height", d => height - y(d.marketShare));
+      }).catch(error => console.error("Error loading market share data:", error));
+    }
+
+    // ------------------------------------
+    // Line Chart: Revenue Trends
+    // ------------------------------------
+    function drawRevenueTrendsChart() {
+      d3.json("/api/revenuetrends").then(data => {
+        const quarters = data.quarters;
+        const companies = data.companies;
+
+        // Set SVG dimensions and margins
+        const svg = d3.select("#revenuetrends-chart svg"),
+              margin = {top: 20, right: 80, bottom: 40, left: 60},
+              width = +svg.node().getBoundingClientRect().width - margin.left - margin.right,
+              height = +svg.node().getBoundingClientRect().height - margin.top - margin.bottom;
+
+        const g = svg.append("g")
+                     .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // X scale: Quarter labels (as points)
+        const x = d3.scalePoint()
+                    .domain(quarters)
+                    .range([0, width])
+                    .padding(0.5);
+
+        // Y scale: Determine maximum revenue among all companies
+        const maxRevenue = d3.max(companies, c => d3.max(c.revenue));
+        const y = d3.scaleLinear()
+                    .domain([0, maxRevenue])
+                    .nice()
+                    .range([height, 0]);
+
+        // Draw axes
+        g.append("g")
+         .attr("class", "x-axis")
+         .attr("transform", `translate(0,${height})`)
+         .call(d3.axisBottom(x));
+
+        g.append("g")
+         .attr("class", "y-axis")
+         .call(d3.axisLeft(y));
+
+        // Line generator function
+        const line = d3.line()
+                       .x((d, i) => x(quarters[i]))
+                       .y(d => y(d))
+                       .curve(d3.curveMonotoneX);
+
+        // Color scale for different companies
+        const color = d3.scaleOrdinal(d3.schemeCategory10)
+                        .domain(companies.map(c => c.name));
+
+        // Draw a line for each company and add circles with interactivity
+        companies.forEach(company => {
+          const path = g.append("path")
+                        .datum(company.revenue)
+                        .attr("fill", "none")
+                        .attr("stroke", color(company.name))
+                        .attr("stroke-width", 2)
+                        .attr("d", line);
+
+          // Animate line drawing with stroke-dasharray
+          const totalLength = path.node().getTotalLength();
+          path
+            .attr("stroke-dasharray", totalLength + " " + totalLength)
+            .attr("stroke-dashoffset", totalLength)
+            .transition()
+            .duration(1500)
+            .attr("stroke-dashoffset", 0);
+
+          // Draw circles at each data point for hover effects
+          g.selectAll(".dot-" + company.name.replace(/\s/g, ""))
+            .data(company.revenue)
+            .enter()
+            .append("circle")
+            .attr("class", "dot-" + company.name.replace(/\s/g, ""))
+            .attr("cx", (d, i) => x(quarters[i]))
+            .attr("cy", d => y(d))
+            .attr("r", 4)
+            .attr("fill", color(company.name))
+            .on("mouseover", function(event, d) {
+              showTooltip(`${company.name}<br>Revenue: ${d}`, event);
+            })
+            .on("mousemove", function(event) {
+              tooltip.style("left", (event.pageX + 10) + "px")
+                     .style("top", (event.pageY + 10) + "px");
+            })
+            .on("mouseout", hideTooltip);
+        });
+      }).catch(error => console.error("Error loading revenue trends data:", error));
+    }
+
+    // ------------------------------------
+    // Bubble Chart: Market Segmentation
+    // ------------------------------------
+    function drawMarketSegmentationChart() {
+      d3.json("/api/marketsegment").then(data => {
+        const segments = data.segments;
+        const svg = d3.select("#marketsegment-chart svg"),
+              width = +svg.node().getBoundingClientRect().width,
+              height = +svg.node().getBoundingClientRect().height;
+
+        // Create a force simulation for the bubble layout
+        const simulation = d3.forceSimulation(segments)
+                             .force("charge", d3.forceManyBody().strength(5))
+                             .force("center", d3.forceCenter(width / 2, height / 2))
+                             .force("collision", d3.forceCollide().radius(d => Math.sqrt(d.revenue) * 4 + 5))
+                             .on("tick", ticked);
+
+        // Create bubbles for each segment
+        const circles = svg.selectAll("circle")
+                           .data(segments)
+                           .enter()
+                           .append("circle")
+                           .attr("r", d => Math.sqrt(d.revenue) * 4)
+                           .attr("fill", (d, i) => d3.schemeCategory10[i])
+                           .on("mouseover", function(event, d) {
+                              showTooltip(`${d.name}<br>Revenue: ${d.revenue}<br>Growth: ${d.growthRate}%`, event);
+                           })
+                           .on("mousemove", function(event) {
+                              tooltip.style("left", (event.pageX + 10) + "px")
+                                     .style("top", (event.pageY + 10) + "px");
+                           })
+                           .on("mouseout", hideTooltip);
+
+        // Update bubble positions on each simulation tick
+        function ticked() {
+          circles.attr("cx", d => d.x)
+                 .attr("cy", d => d.y);
+        }
+      }).catch(error => console.error("Error loading market segmentation data:", error));
+    }
+
+    // Call chart drawing functions on page load
+    drawMarketShareChart();
+    drawRevenueTrendsChart();
+    drawMarketSegmentationChart();
+  </script>
+</body>
+</html>
